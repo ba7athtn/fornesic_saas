@@ -1,0 +1,12 @@
+
+truebool
+2)"Champs manquants : {', '.join(missing)}"str
+=4"Vérifie que tous les champs requis sont présents"strdata ('required_fields) (C"�6
+4
+ (Zmissing"?python-unknown?:Blist)
+'
+ ("
+__bool__*:BboolH"
+ ( * ("
+ (9"
+ (*=E:\image-forensic-saas\backend\src\common\utils\validators.py

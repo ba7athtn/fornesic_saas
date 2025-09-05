@@ -1,0 +1,115 @@
+
+(connection.DatabaseManager.execute_queryJ
+@E:\image-forensic-saas\backend\src\common\database\connection.py% %("2*µ
+2& &(;^\
+' '("
+%9*:
+
+__unknown_file (
+connection.DatabaseManager2get_connection>
+<
+' '(*
+conn"__id*"
+
+__unknown_file (
+
+%9*
+3
+7*1
+3
+connection.py"
+0 0
+implicit return*³
+4, ,(@>
+, ,(
+%1*$
+
+__unknown_file (
+
+conn2commitN
+L
+- -(&
+%2"__id*4
+
+__unknown_file (*
+
+cursor"
+
+rowcount"
+- -(&
+
+%2*g
+5+ +(,DB
++ +(,
+%3*&
+
+__unknown_file (
+
+
+cursor2fetchall"
++ +(,
+
+%3*®
+6) )(-“
+) )(-
+%4*&
+
+__unknown_file (
+
+
+cursor*%
+
+__unknown_file (	
+
+query*&
+
+__unknown_file (
+
+
+params2executeKI
+* *( 
+%5"	str.strip*%
+
+__unknown_file (	
+
+query2stripHF
+* *((
+%6"	str.upper*"
+
+__unknown_file (
+
+%52upperjh
+* *(=
+%7*"
+
+__unknown_file (
+
+%6*&
+
+__unknown_file (
+
+SELECT2
+startswith*
+4
+5*™
+7( (((@>
+( ((
+%8*$
+
+__unknown_file (
+
+conn2cursor@
+>
+( (((
+cursor"__id*"
+
+__unknown_file (
+
+%8*
+3
+6:
+% %(&
+query:
+%( %(<
+paramsB
+connection.DatabaseManagerH

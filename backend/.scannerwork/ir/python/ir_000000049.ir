@@ -1,0 +1,11 @@
+
+#"Valide un format d'email"str
+;2"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"stremail ("‹'
+%
+ (Apattern"#id#:Bstr
+
+ (("
+rematch:/
+-
+ ()"#dependent-value#*:Bbool
+ ()*=E:\image-forensic-saas\backend\src\common\utils\validators.py
