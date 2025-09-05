@@ -1,7 +1,10 @@
+// src/controllers/analysisController.js
 const mongoose = require('mongoose');
 const Image = require('../models/Image');
 const Analysis = require('../models/Analysis');
 const crypto = require('crypto');
+const { ForensicService } = require('../services/forensicService'); // Intégration service unifié
+const exifService = require('../services/exifService'); // API EXIF unifiée
 
 // =====================================
 // CONTRÔLEUR ANALYSE FORENSIQUE AVANCÉE - OPTIMISÉ
@@ -21,9 +24,48 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 // Sanitization des entrées
 const sanitizeInput = (input) => {
-  return typeof input === 'string' 
+  return typeof input === 'string'
     ? input.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
     : input;
+};
+
+/**
+ * Nouveau handler: Analyse unifiée via ForensicService (non destructif)
+ * N'affecte pas les handlers existants; à câbler sur une route d’essai si souhaité.
+ */
+exports.analyzeUnified = async (req, res) => {
+  const requestId = crypto.randomBytes(8).toString('hex');
+  try {
+    const svc = new ForensicService();
+    // Supporte: req.file.buffer (upload), req.body.imageBuffer (Buffer/base64), req.body.imagePath (chemin)
+    const input = req.file?.buffer || req.body?.imageBuffer || req.body?.imagePath || req.body?.input || null;
+    if (!input) {
+      return res.status(400).json({
+        error: 'Image manquante (fournir file.buffer, imageBuffer ou imagePath)',
+        type: 'MISSING_IMAGE_INPUT',
+        requestId,
+        timestamp: new Date().toISOString()
+      });
+    }
+    const result = await svc.analyzeImage(input, {});
+    const report = svc.generateUnifiedReport(result);
+
+    // En-têtes utiles
+    res.setHeader('X-Forensic-Analysis-Version', 'unified-service-1.0.0');
+    res.setHeader('X-Request-Id', requestId);
+    res.setHeader('X-Privacy-Mode', req.privacyMode || 'COMMERCIAL');
+
+    return res.json({ ok: true, result, report, requestId });
+  } catch (e) {
+    console.error(`❌ Erreur analyzeUnified [${requestId}]:`, e.message);
+    return res.status(500).json({
+      error: 'Erreur lors de l’analyse unifiée',
+      type: 'UNIFIED_ANALYSIS_ERROR',
+      requestId,
+      timestamp: new Date().toISOString(),
+      ...(process.env.NODE_ENV === 'development' && { details: e.message })
+    });
+  }
 };
 
 /**
@@ -56,7 +98,7 @@ exports.getComprehensiveAnalysis = async (req, res) => {
     // Récupération parallèle Image + Analysis
     const [image, analysis] = await Promise.all([
       Image.findById(objectId)
-        .select('originalName status authenticityScore riskClassification forensicAnalysis exifData createdAt size hash')
+        .select('originalName status authenticityScore riskClassification forensicAnalysis exifData createdAt size hash updatedAt')
         .lean(),
       Analysis.findOne({ imageId: objectId }).lean()
     ]);
@@ -85,8 +127,8 @@ exports.getComprehensiveAnalysis = async (req, res) => {
         type: 'ANALYSIS_NOT_READY',
         status: image.status,
         message: statusMessages[image.status] || 'Statut inconnu',
-        estimatedCompletion: image.status === 'processing' ?
-          new Date(Date.now() + 300000).toISOString() : null, // +5min
+        estimatedCompletion: image.status === 'processing'
+          ? new Date(Date.now() + 300000).toISOString() : null, // +5min
         requestId: requestId,
         timestamp: new Date().toISOString()
       });
@@ -122,9 +164,9 @@ exports.getComprehensiveAnalysis = async (req, res) => {
     };
 
     // Filtrer piliers demandés
-    const requestedPillars = includePillars === 'all' ?
-      ['anatomical', 'physics', 'statistical', 'exif', 'behavioral', 'audio', 'expert'] :
-      includePillars.split(',').map(p => p.trim());
+    const requestedPillars = includePillars === 'all'
+      ? ['anatomical', 'physics', 'statistical', 'exif', 'behavioral', 'audio', 'expert']
+      : includePillars.split(',').map(p => p.trim());
 
     // Construire réponse forensique complète
     const forensicResponse = {
@@ -146,7 +188,7 @@ exports.getComprehensiveAnalysis = async (req, res) => {
         fileSize: formatBytes(image.size),
         status: image.status,
         hash: req.privacyMode === 'JUDICIAL' ? image.hash :
-          image.hash?.substring(0, 16) + '...' // Hash partiel pour privacy
+          (image.hash ? image.hash.substring(0, 16) + '...' : null)
       },
 
       // Score global
@@ -155,7 +197,7 @@ exports.getComprehensiveAnalysis = async (req, res) => {
         riskLevel: analysisData.aggregatedScore?.riskLevel || 'UNCERTAIN',
         confidence: analysisData.aggregatedScore?.confidence || 'low',
         recommendation: generateRecommendation(analysisData.aggregatedScore),
-        lastUpdated: analysis?.updatedAt || image.updatedAt
+        lastUpdated: analysis?.updatedAt || image.updatedAt || image.createdAt
       },
 
       // Analyse des 7 piliers
@@ -171,12 +213,10 @@ exports.getComprehensiveAnalysis = async (req, res) => {
       },
 
       // Métadonnées EXIF (si autorisées)
-      exifMetadata: req.privacyMode !== 'RESEARCH' ?
-        (image.exifData || null) : null,
+      exifMetadata: req.privacyMode !== 'RESEARCH' ? (image.exifData || null) : null,
 
       // Chain of custody (si mode judiciaire)
-      chainOfCustody: req.privacyMode === 'JUDICIAL' ?
-        (analysis?.chainOfCustody || []) : null
+      chainOfCustody: req.privacyMode === 'JUDICIAL' ? (analysis?.chainOfCustody || []) : null
     };
 
     // Ajouter données des piliers demandés
@@ -222,7 +262,7 @@ exports.getComprehensiveAnalysis = async (req, res) => {
       userId: req.user?.sub || 'anonymous'
     });
 
-    res.json(forensicResponse);
+    return res.json(forensicResponse);
 
   } catch (error) {
     console.error(`❌ Erreur récupération analyse [${requestId}]:`, {
@@ -233,7 +273,7 @@ exports.getComprehensiveAnalysis = async (req, res) => {
       processingTime: Date.now() - startTime + 'ms'
     });
 
-    res.status(500).json({
+    return res.status(500).json({
       error: 'Erreur serveur lors de la récupération de l\'analyse',
       type: 'ANALYSIS_RETRIEVAL_ERROR',
       requestId: requestId,
@@ -453,11 +493,11 @@ exports.getAnalysisStatus = async (req, res) => {
       };
     }
 
-    res.json(statusResponse);
+    return res.json(statusResponse);
 
   } catch (error) {
     console.error('❌ Erreur getAnalysisStatus:', error);
-    res.status(500).json({
+    return res.status(500).json({
       error: 'Erreur lors de la récupération du statut',
       type: 'STATUS_RETRIEVAL_ERROR'
     });
@@ -571,8 +611,8 @@ exports.compareForensicAnalyses = async (req, res) => {
       flagsComparison: compareFlags(analysis1.consolidatedFlags, analysis2.consolidatedFlags),
 
       // EXIF comparison
-      exifComparison: image1.exifData && image2.exifData ?
-        compareExifData(image1.exifData, image2.exifData) : null,
+      exifComparison: image1.exifData && image2.exifData
+        ? compareExifData(image1.exifData, image2.exifData) : null,
 
       // Évaluation globale
       overallAssessment: {
@@ -603,11 +643,11 @@ exports.compareForensicAnalyses = async (req, res) => {
 
     console.log(`✅ Comparaison forensique: ${imageId1} vs ${imageId2} [${requestId}]`);
 
-    res.json(comparison);
+    return res.json(comparison);
 
   } catch (error) {
     console.error(`❌ Erreur comparaison forensique [${requestId}]:`, error);
-    res.status(500).json({
+    return res.status(500).json({
       error: 'Erreur lors de la comparaison forensique',
       type: 'COMPARISON_ERROR',
       requestId: requestId,
@@ -698,13 +738,13 @@ exports.getForensicStatistics = async (req, res) => {
       },
 
       overview: {
-        totalAnalyses: globalStats[0]?.totalAnalyses || 0,
-        completedAnalyses: globalStats[0]?.completedAnalyses || 0,
-        completionRate: globalStats[0]?.totalAnalyses > 0 ?
-          Math.round((globalStats[0].completedAnalyses / globalStats[0].totalAnalyses) * 100) : 0,
-        averageAuthenticityScore: Math.round(globalStats[0]?.averageScore || 0),
-        totalSecurityFlags: globalStats[0]?.totalFlags || 0,
-        averageProcessingTime: Math.round(globalStats[0]?.averageProcessingTime || 0)
+        totalAnalyses: globalStats?.totalAnalyses || 0,
+        completedAnalyses: globalStats?.completedAnalyses || 0,
+        completionRate: globalStats?.totalAnalyses > 0
+          ? Math.round((globalStats.completedAnalyses / globalStats.totalAnalyses) * 100) : 0,
+        averageAuthenticityScore: Math.round(globalStats?.averageScore || 0),
+        totalSecurityFlags: globalStats?.totalFlags || 0,
+        averageProcessingTime: Math.round(globalStats?.averageProcessingTime || 0)
       },
 
       riskDistribution: riskDistribution.reduce((acc, item) => {
@@ -713,13 +753,13 @@ exports.getForensicStatistics = async (req, res) => {
       }, {}),
 
       pillarPerformance: {
-        anatomical: Math.round(pillarStats[0]?.avgAnatomical || 0),
-        physics: Math.round(pillarStats[0]?.avgPhysics || 0),
-        statistical: Math.round(pillarStats[0]?.avgStatistical || 0),
-        exif: Math.round(pillarStats[0]?.avgExif || 0),
-        behavioral: Math.round(pillarStats[0]?.avgBehavioral || 0),
-        audio: Math.round(pillarStats[0]?.avgAudio || 0),
-        expert: Math.round(pillarStats[0]?.avgExpert || 0)
+        anatomical: Math.round(pillarStats?.avgAnatomical || 0),
+        physics: Math.round(pillarStats?.avgPhysics || 0),
+        statistical: Math.round(pillarStats?.avgStatistical || 0),
+        exif: Math.round(pillarStats?.avgExif || 0),
+        behavioral: Math.round(pillarStats?.avgBehavioral || 0),
+        audio: Math.round(pillarStats?.avgAudio || 0),
+        expert: Math.round(pillarStats?.avgExpert || 0)
       },
 
       recentActivity: recentActivity.map(analysis => ({
@@ -735,11 +775,11 @@ exports.getForensicStatistics = async (req, res) => {
       generatedAt: new Date().toISOString()
     };
 
-    res.json(statistics);
+    return res.json(statistics);
 
   } catch (error) {
     console.error('❌ Erreur statistiques forensiques:', error);
-    res.status(500).json({
+    return res.status(500).json({
       error: 'Erreur lors de la génération des statistiques',
       type: 'STATISTICS_ERROR'
     });
@@ -801,16 +841,17 @@ exports.getSessionSummary = async (req, res) => {
         averageScore: Math.round(averageScore),
         classifications: classificationCounts,
         mostCommonFlags: Object.entries(flagCounts)
-          .sort(([,a], [,b]) => b - a)
+          .sort(([, a], [, b]) => b - a)
           .slice(0, 5)
           .map(([flag, count]) => ({ flag, count })),
-        sessionStarted: analyses.reduce((earliest, a) => 
-          a.requestedAt < earliest ? a.requestedAt : earliest, 
-          analyses[0].requestedAt
+        sessionStarted: analyses.reduce((earliest, a) =>
+          (a.requestedAt || a.createdAt) < earliest ? (a.requestedAt || a.createdAt) : earliest,
+          analyses.requestedAt || analyses.createdAt
         ),
-        lastActivity: analyses.reduce((latest, a) => 
-          (a.completedAt || a.requestedAt) > latest ? (a.completedAt || a.requestedAt) : latest, 
-          analyses[0].requestedAt
+        lastActivity: analyses.reduce((latest, a) =>
+          ((a.completedAt || a.requestedAt || a.createdAt) > latest)
+            ? (a.completedAt || a.requestedAt || a.createdAt) : latest,
+          analyses.requestedAt || analyses.createdAt
         )
       }
     };
@@ -829,11 +870,11 @@ exports.getSessionSummary = async (req, res) => {
       }));
     }
 
-    res.json(sessionSummary);
+    return res.json(sessionSummary);
 
   } catch (error) {
     console.error('❌ Erreur session summary:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: 'Erreur lors de la récupération du résumé de session',
       type: 'SESSION_SUMMARY_ERROR'
@@ -850,13 +891,13 @@ function extractPillarData(forensicAnalysis, pillarName) {
 
   // Mapper les données legacy vers la nouvelle structure
   const mapping = {
-    'anatomical': forensicAnalysis.anatomicalAnalysis,
-    'physics': forensicAnalysis.physicsViolations,
-    'statistical': forensicAnalysis.statisticalAnomalies,
-    'exif': forensicAnalysis.exifInconsistencies,
-    'behavioral': forensicAnalysis.behavioralAnomalies,
-    'audio': forensicAnalysis.audioAnalysis,
-    'expert': forensicAnalysis.expertFlags
+    'anatomical': forensicAnalysis?.anatomicalAnalysis,
+    'physics': forensicAnalysis?.physicsViolations,
+    'statistical': forensicAnalysis?.statisticalAnomalies,
+    'exif': forensicAnalysis?.exifInconsistencies,
+    'behavioral': forensicAnalysis?.behavioralAnomalies,
+    'audio': forensicAnalysis?.audioAnalysis,
+    'expert': forensicAnalysis?.expertFlags
   };
 
   return mapping[pillarName] || null;
@@ -931,41 +972,162 @@ async function addChainOfCustodyEntry(analysisId, entry) {
 }
 
 async function executeForensicAnalysis(analysisId, imageId, pillarsConfig, weights) {
+  const execStart = Date.now();
   try {
     console.log(`🔬 Exécution analyse forensique: ${analysisId}`);
 
-    // Mise à jour statut
+    // 0) Statut -> running
     await Analysis.findByIdAndUpdate(analysisId, {
       status: 'running',
       'analysisMetadata.startTime': new Date()
     });
 
-    // Simuler analyse des piliers (remplacer par vraie implémentation)
-    const analysisResults = {};
+    // 1) Charger doc image (inclut files.original)
+    const imageDoc = await Image.findById(imageId)
+      .select('files path filePath storagePath localPath buffer exifData originalName')
+      .lean();
 
-    for (const [pillar, enabled] of Object.entries(pillarsConfig)) {
-      if (enabled) {
-        analysisResults[`${pillar}Analysis`] = await simulatePillarAnalysis(pillar, imageId);
+    if (!imageDoc) throw new Error('IMAGE_NOT_FOUND_FOR_ANALYSIS');
+
+    const analysisResults = {}; // Collecte des résultats réels des piliers
+
+    // 2) EXIF centralisé robuste
+    if (pillarsConfig?.exif) {
+      try {
+        const imageInput =
+          imageDoc?.files?.original ||
+          imageDoc?.path ||
+          imageDoc?.filePath ||
+          imageDoc?.storagePath ||
+          imageDoc?.localPath ||
+          null;
+
+        if (imageInput) {
+          const exif = await exifService.processImage(imageInput);
+
+          const normalizedData = exif?.normalized?.data || null;
+          const validated = exif?.validated || { ok: false, valid: false, warnings: ['EXIF_RESULT_EMPTY'] };
+          const forensic = exif?.forensic || { ok: false, score: 0, flags: ['EXIF_RESULT_EMPTY'] };
+
+          if (normalizedData) {
+            await Image.findByIdAndUpdate(imageId, {
+              exifData: {
+                camera: normalizedData.camera || null,
+                technical: normalizedData.technical || null,
+                timestamps: normalizedData.timestamps || null,
+                gps: normalizedData.gps || null
+              }
+            });
+          }
+
+          analysisResults.exifForensics = {
+            overallScore: typeof forensic.score === 'number' ? forensic.score : 0,
+            metadata: normalizedData,
+            validated,
+            forensic
+          };
+        } else {
+          analysisResults.exifForensics = {
+            overallScore: 0,
+            metadata: null,
+            validated: { ok: false, valid: false, warnings: ['NO_IMAGE_PATH'] },
+            forensic: { ok: false, score: 0, flags: ['NO_IMAGE_PATH'] }
+          };
+        }
+      } catch (e) {
+        console.warn(`⚠️ EXIF centralisé échoué pour ${imageId}:`, e.message);
+        analysisResults.exifForensics = {
+          overallScore: 0,
+          metadata: null,
+          validated: { ok: false, valid: false, warnings: ['EXIF_EXTRACTION_ERROR'] },
+          forensic: { ok: false, score: 0, flags: ['EXIF_EXTRACTION_ERROR'] }
+        };
       }
     }
 
-    // Calculer score agrégé
-    const aggregatedScore = calculateAggregatedScore(analysisResults, weights);
+    // 3) ForensicService pour les autres piliers
+    const svc = new ForensicService();
+    const include = {
+      anatomical: !!pillarsConfig?.anatomical,
+      physics: !!pillarsConfig?.physics,
+      statistical: !!pillarsConfig?.statistical,
+      exif: false,
+      behavioral: !!pillarsConfig?.behavioral,
+      audio: !!pillarsConfig?.audio,
+      expert: !!pillarsConfig?.expert,
+      aiDetection: false
+    };
 
-    // Générer flags consolidés
+    const imageInputUnified =
+      imageDoc?.files?.original ||
+      imageDoc?.path ||
+      imageDoc?.filePath ||
+      imageDoc?.storagePath ||
+      imageDoc?.localPath ||
+      null;
+
+    if (imageInputUnified) {
+      const unified = await svc.analyzeImage(imageInputUnified, { include });
+
+      if (include.anatomical && unified?.anatomical) {
+        analysisResults.anatomicalAnalysis = {
+          overallScore: unified.anatomical.overallScore ?? unified.anatomical.score ?? 0,
+          findings: unified.anatomical.findings || [],
+          confidence: unified.anatomical.confidence || 'medium'
+        };
+      }
+      if (include.physics && unified?.physics) {
+        analysisResults.physicsAnalysis = {
+          overallScore: unified.physics.overallScore ?? unified.physics.score ?? 0,
+          findings: unified.physics.findings || [],
+          confidence: unified.physics.confidence || 'medium'
+        };
+      }
+      if (include.statistical && unified?.statistical) {
+        analysisResults.statisticalAnalysis = {
+          overallScore: unified.statistical.overallScore ?? unified.statistical.score ?? 0,
+          findings: unified.statistical.findings || [],
+          confidence: unified.statistical.confidence || 'medium'
+        };
+      }
+      if (include.behavioral && unified?.behavioral) {
+        analysisResults.behavioralAnalysis = {
+          overallScore: unified.behavioral.overallScore ?? unified.behavioral.score ?? 0,
+          findings: unified.behavioral.findings || [],
+          confidence: unified.behavioral.confidence || 'medium'
+        };
+      }
+      if (include.audio && unified?.audio) {
+        analysisResults.audioForensics = {
+          overallScore: unified.audio.overallScore ?? unified.audio.score ?? 0,
+          findings: unified.audio.findings || [],
+          confidence: unified.audio.confidence || 'low'
+        };
+      }
+      if (include.expert && unified?.expert) {
+        analysisResults.expertAnalysis = {
+          overallScore: unified.expert.overallScore ?? unified.expert.score ?? 0,
+          findings: unified.expert.findings || [],
+          confidence: unified.expert.confidence || 'high'
+        };
+      }
+    } else {
+      console.warn(`⚠️ Aucun chemin image disponible pour l'analyse unifiée: ${imageId}`);
+    }
+
+    // 4) Agrégation et sauvegardes
+    const aggregatedScore = calculateAggregatedScore(analysisResults, weights);
     const consolidatedFlags = generateConsolidatedFlags(analysisResults);
 
-    // Sauvegarder résultats
     await Analysis.findByIdAndUpdate(analysisId, {
       ...analysisResults,
-      aggregatedScore: aggregatedScore,
-      consolidatedFlags: consolidatedFlags,
+      aggregatedScore,
+      consolidatedFlags,
       status: 'completed',
       'analysisMetadata.endTime': new Date(),
-      'analysisMetadata.processingTime': Date.now() - new Date().getTime()
+      'analysisMetadata.processingTime': Date.now() - execStart
     });
 
-    // Mettre à jour image
     await Image.findByIdAndUpdate(imageId, {
       status: 'analyzed',
       authenticityScore: aggregatedScore.authenticity,
@@ -974,10 +1136,8 @@ async function executeForensicAnalysis(analysisId, imageId, pillarsConfig, weigh
     });
 
     console.log(`✅ Analyse terminée: ${analysisId}`);
-
   } catch (error) {
     console.error(`❌ Erreur exécution analyse ${analysisId}:`, error);
-
     await Analysis.findByIdAndUpdate(analysisId, {
       status: 'failed',
       'analysisMetadata.errorsDuringAnalysis': [{
@@ -987,7 +1147,6 @@ async function executeForensicAnalysis(analysisId, imageId, pillarsConfig, weigh
         recoverable: false
       }]
     });
-
     await Image.findByIdAndUpdate(imageId, {
       status: 'error',
       error: `Analysis failed: ${error.message}`
@@ -995,28 +1154,15 @@ async function executeForensicAnalysis(analysisId, imageId, pillarsConfig, weigh
   }
 }
 
-async function simulatePillarAnalysis(pillar, imageId) {
-  // Simulation réaliste - remplacer par vraie implémentation
-  return new Promise(resolve => {
-    setTimeout(() => {
-      resolve({
-        overallScore: Math.floor(Math.random() * 40 + 60), // 60-100
-        analysisTime: Math.floor(Math.random() * 5000 + 1000), // 1-6s
-        findings: [`${pillar} analysis completed`],
-        confidence: Math.random() > 0.7 ? 'high' : 'medium'
-      });
-    }, Math.random() * 2000 + 500); // 0.5-2.5s
-  });
-}
-
 function calculateAggregatedScore(results, weights) {
   let totalScore = 0;
   let totalWeight = 0;
 
-  for (const [pillar, weight] of Object.entries(weights)) {
-    const pillarResult = results[`${pillar}Analysis`];
-    if (pillarResult && pillarResult.overallScore !== null) {
-      totalScore += pillarResult.overallScore * weight;
+  for (const [pillar, weight] of Object.entries(weights || {})) {
+    const pillarResult = results[`${pillar}Analysis`] || (pillar === 'exif' ? results.exifForensics : null);
+    const score = pillarResult?.overallScore ?? null;
+    if (score !== null) {
+      totalScore += score * weight;
       totalWeight += weight;
     }
   }
@@ -1040,8 +1186,8 @@ function calculateAggregatedScore(results, weights) {
 function generateConsolidatedFlags(results) {
   const flags = [];
 
-  Object.entries(results).forEach(([pillarName, data]) => {
-    if (data && data.overallScore < 50) {
+  Object.entries(results || {}).forEach(([pillarName, data]) => {
+    if (data && typeof data.overallScore === 'number' && data.overallScore < 50) {
       flags.push({
         type: `${pillarName.toUpperCase()}_ANOMALY`,
         severity: data.overallScore < 30 ? 'critical' : 'warning',
@@ -1074,11 +1220,11 @@ function compareFlags(flags1, flags2) {
 
 function compareExifData(exif1, exif2) {
   return {
-    sameCameraMake: exif1.camera?.make === exif2.camera?.make,
-    sameCameraModel: exif1.camera?.model === exif2.camera?.model,
-    sameOrientation: exif1.technical?.orientation === exif2.technical?.orientation,
-    timestampDelta: exif1.timestamps?.dateTimeOriginal && exif2.timestamps?.dateTimeOriginal ?
-      Math.abs(new Date(exif1.timestamps.dateTimeOriginal) - new Date(exif2.timestamps.dateTimeOriginal)) : null
+    sameCameraMake: exif1?.camera?.make === exif2?.camera?.make,
+    sameCameraModel: exif1?.camera?.model === exif2?.camera?.model,
+    sameOrientation: exif1?.technical?.orientation === exif2?.technical?.orientation,
+    timestampDelta: exif1?.timestamps?.dateTimeOriginal && exif2?.timestamps?.dateTimeOriginal
+      ? Math.abs(new Date(exif1.timestamps.dateTimeOriginal) - new Date(exif2.timestamps.dateTimeOriginal)) : null
   };
 }
 
@@ -1098,8 +1244,8 @@ function calculateNameSimilarity(name1, name2) {
 function levenshteinDistance(str1, str2) {
   const matrix = Array(str2.length + 1).fill(null).map(() => Array(str1.length + 1).fill(null));
 
-  for (let i = 0; i <= str1.length; i++) matrix[0][i] = i;
-  for (let j = 0; j <= str2.length; j++) matrix[j][0] = j;
+  for (let i = 0; i <= str1.length; i++) matrix[i] = i;
+  for (let j = 0; j <= str2.length; j++) matrix[j] = j;
 
   for (let j = 1; j <= str2.length; j++) {
     for (let i = 1; i <= str1.length; i++) {
@@ -1142,7 +1288,9 @@ function parsePeriod(period) {
   const units = { d: 86400000, h: 3600000, m: 60000 };
   const match = period.match(/^(\d+)([dhm])$/);
   if (!match) return 30 * 86400000; // 30 days default
-  return parseInt(match[1]) * (units[match[2]] || 86400000);
+  const value = parseInt(match[1], 10);
+  const unit = match[2];
+  return value * (units[unit] || 86400000);
 }
 
 function formatBytes(bytes) {

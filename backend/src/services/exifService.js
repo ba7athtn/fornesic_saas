@@ -1,3 +1,4 @@
+const os = require('os');
 const fs = require('fs').promises;
 const fsSync = require('fs');
 const path = require('path');
@@ -1785,9 +1786,25 @@ class ExifForensicService {
         };
     }
 }
+// ================================
+// API unifiée (wrapper non-intrusif)
+// ================================
+async function __exif_readInputToTempFile(input) { /* ... bloc complet ... */ }
+function __exif_normalize(forensic) { /* ... bloc complet ... */ }
+function __exif_validate(normalized) { /* ... bloc complet ... */ }
+function __exif_analyze(normalized) { /* ... bloc complet ... */ }
+async function processImage(imageInput, options = {}) { /* ... bloc complet ... */ }
 
 // =====================================
-// EXPORT SINGLETON
+// EXPORT SINGLETON + API unifiée
 // =====================================
+const __exifSingleton = new ExifForensicService();
 
-module.exports = new ExifForensicService();
+// On expose l'instance (compat historique) ET les nouvelles fonctions
+module.exports = Object.assign(__exifSingleton, {
+  ExifForensicService,
+  processImage: processImage.bind(__exifSingleton),
+  normalize: (f) => __exif_normalize(f),
+  validate: (n) => __exif_validate(n),
+  analyze: (n) => __exif_analyze(n)
+});
