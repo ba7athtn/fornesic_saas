@@ -1,0 +1,55 @@
+{
+  "filename": "IMG-1756825888297-139afb03cd661e27-6G.png",
+  "quarantinedAt": "2025-09-02T15:11:28.566Z",
+  "reason": "HIGH_THREAT",
+  "details": {
+    "filename": "IMG-1756825888297-139afb03cd661e27-6G.png",
+    "originalname": "6G.png",
+    "magicNumbers": {
+      "valid": true,
+      "detected": {
+        "ext": "png",
+        "mime": "image/png"
+      }
+    },
+    "exifAnalysis": {
+      "safe": false,
+      "risks": [
+        {
+          "type": "METADATA_MISSING",
+          "severity": "medium",
+          "details": "Métadonnées EXIF critiques manquantes"
+        }
+      ],
+      "exifData": {
+        "ImageWidth": 1242,
+        "ImageHeight": 791,
+        "BitDepth": 8,
+        "ColorType": "RGB with Alpha",
+        "Compression": "Deflate/Inflate",
+        "Filter": "Adaptive",
+        "Interlace": "Noninterlaced"
+      }
+    },
+    "threatScan": {
+      "clean": false,
+      "threats": [
+        {
+          "type": "MALWARE_SIGNATURE",
+          "severity": "critical",
+          "signatureId": 0,
+          "details": "Signature suspecte détectée dans le fichier"
+        },
+        {
+          "type": "MALWARE_SIGNATURE",
+          "severity": "critical",
+          "signatureId": 5,
+          "details": "Signature suspecte détectée dans le fichier"
+        }
+      ]
+    },
+    "overallRisk": 90
+  },
+  "originalPath": "uploads\\temp\\IMG-1756825888297-139afb03cd661e27-6G.png",
+  "quarantinePath": "E:\\image-forensic-saas\\uploads\\quarantine\\QUARANTINE-1756825888565-IMG-1756825888297-139afb03cd661e27-6G.png"
+}
