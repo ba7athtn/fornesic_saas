@@ -88,6 +88,16 @@ const calculateSimpleEntropy = (buffer) => {
   return entropy / 8; // Normaliser entre 0 et 1
 };
 
+// Normalisation des flags pour respecter le schéma Mongoose
+const normalizeFlags = (flags) => {
+  if (!Array.isArray(flags)) return [];
+  return flags.map((f) => {
+    if (typeof f === 'string') return { code: f, severity: 'info', pillar: null };
+    if (f && typeof f === 'object') return f;
+    return { code: String(f), severity: 'info', pillar: null };
+  });
+};
+
 // ANALYSE FORENSIQUE RAPIDE LOCALE (WRAPPER RÉEL)
 const performQuickForensicAnalysisLocal = async (filePath, imageData) => {
   try {
@@ -404,19 +414,40 @@ const uploadForensicImage = async (req, res) => {
           analysis = await performQuickForensicAnalysisLocal(finalPath, metadata);
         }
 
-        // Mettre à jour avec résultats d'analyse
-        await Image.findByIdAndUpdate(savedImage._id, {
-          'forensicAnalysis': {
-            ...analysis,
-            status: 'completed',
-            completedAt: new Date()
-          },
-          'authenticityScore': analysis.overallScore,
-          'classification': analysis.classification,
-          'status': 'analyzed'
-        });
+        // Préparer les résultats pour persistance (flags normalisés)
+        const dbAnalysis = {
+          status: 'completed',
+          completedAt: new Date(),
+          version: analysis.version,
+          pillars: analysis.pillars || {},
+          overallScore: analysis.overallScore ?? null,
+          classification: analysis.classification || null,
+          flags: normalizeFlags(analysis.flags || []),
+          recommendations: Array.isArray(analysis.recommendations) ? analysis.recommendations : []
+        };
 
-        console.log(`✅ Analyse forensique terminée: ${savedImage._id} (${analysis.overallScore}%)`);
+        // Mettre à jour avec résultats d'analyse (notation pointée)
+        await Image.findByIdAndUpdate(
+          savedImage._id,
+          {
+            $set: {
+              'forensicAnalysis.status': dbAnalysis.status,
+              'forensicAnalysis.completedAt': dbAnalysis.completedAt,
+              'forensicAnalysis.version': dbAnalysis.version,
+              'forensicAnalysis.pillars': dbAnalysis.pillars,
+              'forensicAnalysis.overallScore': dbAnalysis.overallScore,
+              'forensicAnalysis.classification': dbAnalysis.classification,
+              'forensicAnalysis.flags': dbAnalysis.flags,
+              'forensicAnalysis.recommendations': dbAnalysis.recommendations,
+              'authenticityScore': dbAnalysis.overallScore,
+              'classification': dbAnalysis.classification,
+              'status': 'analyzed'
+            }
+          },
+          { new: false }
+        );
+
+        console.log(`✅ Analyse forensique terminée: ${savedImage._id} (${dbAnalysis.overallScore}%)`);
 
         // AJOUTER ANALYSE LOURDE EN QUEUE (si disponible)
         try {
@@ -576,7 +607,11 @@ const getForensicImageDetails = async (req, res) => {
     }
 
     const image = await Image.findById(objectId, projection)
-      .populate('forensicAnalysis.relatedImages', 'originalName filename')
+      .populate({
+        path: 'forensicAnalysis.relatedImages',
+        select: 'originalName filename',
+        strictPopulate: false
+      })
       .lean();
 
     if (!image) {
@@ -628,7 +663,7 @@ const getImageStatus = async (req, res) => {
     const objectId = validateObjectId(imageId);
 
     const image = await Image.findById(objectId)
-      .select('status forensicAnalysis.status forensicAnalysis.completedAt authenticityScore classification')
+      .select('status authenticityScore classification forensicAnalysis.completedAt forensicAnalysis.status updatedAt')
       .lean();
 
     if (!image) {
@@ -638,15 +673,25 @@ const getImageStatus = async (req, res) => {
       });
     }
 
+    // Dérivation fiable de l'état d'analyse
+    const completed =
+      !!image?.forensicAnalysis?.completedAt ||
+      image?.status === 'analyzed' ||
+      typeof image?.authenticityScore === 'number';
+
+    const analysisStatus =
+      completed ? 'completed' :
+      ((image?.status === 'analyzing' || image?.forensicAnalysis?.status === 'analyzing') ? 'analyzing' : 'pending');
+
     res.json({
       success: true,
-      imageId: imageId,
+      imageId,
       status: image.status,
-      analysisStatus: image.forensicAnalysis?.status || 'pending',
-      analysisCompleted: !!image.forensicAnalysis?.completedAt,
-      authenticityScore: image.authenticityScore,
-      classification: image.classification,
-      lastUpdate: image.forensicAnalysis?.completedAt || new Date(),
+      analysisStatus,
+      analysisCompleted: completed,
+      authenticityScore: image.authenticityScore ?? null,
+      classification: image.classification ?? null,
+      lastUpdate: image?.forensicAnalysis?.completedAt || image?.updatedAt || new Date(),
       timestamp: new Date().toISOString()
     });
 
@@ -658,7 +703,6 @@ const getImageStatus = async (req, res) => {
     });
   }
 };
-
 // =====================================
 // CONTRÔLEUR LISTE IMAGES
 // =====================================
