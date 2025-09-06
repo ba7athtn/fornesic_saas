@@ -1,17 +1,18 @@
+// src/controllers/imageController.js
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs').promises;
 const fsSync = require('fs');
 const crypto = require('crypto');
 const sharp = require('sharp');
-const ExifReader = require('exifr');
 const mongoose = require('mongoose');
 const Image = require('../models/Image');
 const Analysis = require('../models/Analysis');
-const { normalizeExifData } = require('../utils/exifNormalizer');
 const { forensicUpload } = require('../middleware/upload');
 
-// IMPORTS CORRIGÉS POUR SERVICES
+// Services centralisés
+const exifService = require('../services/exifService'); // EXIF unifié
+const { ForensicService } = require('../services/forensicService'); // Service forensique unifié réel
 const { performQuickForensicAnalysis } = require('../services/forensicAnalyzer');
 const { createThumbnail } = require('../services/imageProcessor');
 const { addAnalysisJob } = require('../services/analysisQueue');
@@ -20,7 +21,7 @@ const { addAnalysisJob } = require('../services/analysisQueue');
 const getHeavyAnalyzer = () => require('../services/heavyAnalyzer');
 
 // =====================================
-// CONTRÔLEUR IMAGES FORENSIQUES AVANCÉ - OPTIMISÉ
+// CONTRÔLEUR IMAGES FORENSIQUES AVANCÉE - OPTIMISÉ
 // =====================================
 
 // Validation ObjectId optimisée
@@ -46,7 +47,7 @@ const sanitizeInput = (input) => {
 const generateThumbnailFallback = async (inputPath, outputPath, options = {}) => {
   try {
     const { width = 300, height = 300, quality = 85 } = options;
-    
+
     await sharp(inputPath)
       .resize(width, height, {
         fit: 'inside',
@@ -57,10 +58,10 @@ const generateThumbnailFallback = async (inputPath, outputPath, options = {}) =>
         progressive: true
       })
       .toFile(outputPath);
-      
+
     console.log(`✅ Thumbnail généré (fallback): ${path.basename(outputPath)}`);
     return outputPath;
-    
+
   } catch (error) {
     console.error('❌ Erreur génération thumbnail fallback:', error);
     throw error;
@@ -71,11 +72,11 @@ const generateThumbnailFallback = async (inputPath, outputPath, options = {}) =>
 const calculateSimpleEntropy = (buffer) => {
   const frequency = new Array(256).fill(0);
   const length = Math.min(buffer.length, 10000); // Analyser max 10KB pour la vitesse
-  
+
   for (let i = 0; i < length; i++) {
     frequency[buffer[i]]++;
   }
-  
+
   let entropy = 0;
   for (let i = 0; i < 256; i++) {
     if (frequency[i] > 0) {
@@ -83,175 +84,119 @@ const calculateSimpleEntropy = (buffer) => {
       entropy -= probability * Math.log2(probability);
     }
   }
-  
+
   return entropy / 8; // Normaliser entre 0 et 1
 };
 
-// ANALYSE FORENSIQUE RAPIDE LOCALE (FALLBACK)
+// ANALYSE FORENSIQUE RAPIDE LOCALE (WRAPPER RÉEL)
 const performQuickForensicAnalysisLocal = async (filePath, imageData) => {
   try {
-    console.log(`🔍 Analyse forensique rapide locale: ${path.basename(filePath)}`);
-    
+    console.log(`🔍 Analyse forensique réelle (wrapper local): ${path.basename(filePath)}`);
+
     const analysis = {
       timestamp: new Date(),
-      version: '3.0.0-quick-local',
+      version: '3.0.0-unified-wrapper',
       pillars: {},
       overallScore: 0,
       flags: [],
       recommendations: []
     };
 
-    // PILIER 1 - ANATOMIQUE (Analyse basique)
+    // 1) EXIF via service centralisé
+    let exifScore = 0;
     try {
-      const stats = await fs.stat(filePath);
-      const sizeScore = stats.size > 1024 && stats.size < 50 * 1024 * 1024 ? 85 : 70;
-      
-      analysis.pillars.anatomical = {
-        score: sizeScore,
-        confidence: 'medium',
-        details: {
-          fileSize: stats.size,
-          sizeCategory: stats.size > 5 * 1024 * 1024 ? 'large' : 'normal'
-        },
-        flags: stats.size < 1024 ? ['Fichier très petit'] : []
-      };
-    } catch (error) {
-      analysis.pillars.anatomical = {
-        score: 50,
-        confidence: 'low',
-        details: { error: 'Erreur analyse taille' },
-        flags: ['Erreur analyse anatomique']
-      };
-    }
+      const exif = await exifService.processImage(filePath);
+      const n = exif?.normalized?.data || {};
+      const software = n?.technical?.software || null;
+      const hasBasicExif = !!(n?.camera?.make || n?.camera?.model || n?.timestamps?.dateTimeOriginal);
 
-    // PILIER 2 - PHYSIQUE (Analyse géométrique basique)
-    try {
-      const metadata = await sharp(filePath).metadata();
-      const aspectRatio = metadata.width / metadata.height;
-      const normalRatios = [1, 4/3, 16/9, 3/2, 2/3, 9/16];
-      const isNormalRatio = normalRatios.some(ratio => Math.abs(aspectRatio - ratio) < 0.1);
-      
-      analysis.pillars.physics = {
-        score: isNormalRatio ? 90 : 75,
-        confidence: 'high',
-        details: {
-          width: metadata.width,
-          height: metadata.height,
-          aspectRatio: Math.round(aspectRatio * 100) / 100,
-          format: metadata.format
-        },
-        flags: metadata.width < 100 || metadata.height < 100 ? ['Résolution très faible'] : []
-      };
-    } catch (error) {
-      analysis.pillars.physics = {
-        score: 60,
-        confidence: 'low',
-        details: { error: 'Erreur analyse métadonnées' },
-        flags: ['Erreur analyse physique']
-      };
-    }
-
-    // PILIER 3 - STATISTIQUE (Analyse rapide)
-    try {
-      const buffer = await fs.readFile(filePath);
-      const entropy = calculateSimpleEntropy(buffer);
-      const compressionRatio = imageData && imageData.width && imageData.height ? 
-        buffer.length / (imageData.width * imageData.height * 3) : 0.1;
-      
-      analysis.pillars.statistical = {
-        score: entropy > 0.7 ? 85 : 70,
-        confidence: 'medium',
-        details: {
-          entropy: Math.round(entropy * 100) / 100,
-          compressionRatio: Math.round(compressionRatio * 100) / 100,
-          fileSize: buffer.length
-        },
-        flags: entropy < 0.5 ? ['Entropie faible (possible manipulation)'] : []
-      };
-    } catch (error) {
-      analysis.pillars.statistical = {
-        score: 65,
-        confidence: 'low',
-        details: { error: 'Erreur analyse statistique' },
-        flags: ['Erreur analyse statistique']
-      };
-    }
-
-    // PILIER 4 - EXIF (Analyse métadonnées)
-    try {
-      const exifData = await ExifReader.parse(filePath);
-      const hasBasicExif = exifData && (exifData.Make || exifData.Model || exifData.DateTime);
-      const hasSuspiciousSoftware = exifData?.Software && 
-        /photoshop|gimp|ai|midjourney|dall-e/i.test(exifData.Software);
-      
       analysis.pillars.exif = {
-        score: hasBasicExif ? (hasSuspiciousSoftware ? 40 : 85) : 60,
+        score: typeof exif?.forensic?.score === 'number' ? exif.forensic.score : (hasBasicExif ? 70 : 50),
         confidence: hasBasicExif ? 'high' : 'medium',
         details: {
-          hasExif: !!exifData,
-          camera: exifData?.Make || 'Inconnu',
-          software: exifData?.Software || 'Inconnu',
-          dateTime: exifData?.DateTime || null
+          hasExif: hasBasicExif,
+          camera: n?.camera?.make || 'Inconnu',
+          model: n?.camera?.model || 'Inconnu',
+          software: software || 'Inconnu',
+          dateTime: n?.timestamps?.dateTimeOriginal || null
         },
-        flags: [
-          ...(!hasBasicExif ? ['Métadonnées EXIF manquantes'] : []),
-          ...(hasSuspiciousSoftware ? ['Logiciel de retouche détecté'] : [])
-        ]
+        flags: (exif?.forensic?.flags || [])
       };
-    } catch (error) {
+      exifScore = analysis.pillars.exif.score;
+    } catch (e) {
       analysis.pillars.exif = {
         score: 50,
         confidence: 'low',
-        details: { error: 'Erreur lecture EXIF' },
-        flags: ['Erreur analyse EXIF']
+        details: { error: 'Erreur EXIF (centralisé)' },
+        flags: ['EXIF_EXTRACTION_ERROR']
+      };
+      exifScore = 50;
+    }
+
+    // 2) Piliers unifiés via ForensicService
+    const svc = new ForensicService();
+    const include = {
+      anatomical: true,
+      physics: true,
+      statistical: true,
+      exif: false,       // déjà traité ci‑dessus
+      behavioral: true,
+      audio: false,      // off par défaut pour les images
+      expert: false,     // intervention humaine normalement
+      aiDetection: false // éviter bind lourds sur test rapide
+    };
+
+    const unified = await svc.analyzeImage(filePath, { include });
+
+    if (unified?.anatomical) {
+      analysis.pillars.anatomical = {
+        score: unified.anatomical.overallScore ?? unified.anatomical.score ?? 0,
+        confidence: unified.anatomical.confidence || 'medium',
+        details: unified.anatomical.details || {}
+      };
+    }
+    if (unified?.physics) {
+      analysis.pillars.physics = {
+        score: unified.physics.overallScore ?? unified.physics.score ?? 0,
+        confidence: unified.physics.confidence || 'medium',
+        details: unified.physics.details || {}
+      };
+    }
+    if (unified?.statistical) {
+      analysis.pillars.statistical = {
+        score: unified.statistical.overallScore ?? unified.statistical.score ?? 0,
+        confidence: unified.statistical.confidence || 'medium',
+        details: unified.statistical.details || {}
+      };
+    }
+    if (unified?.behavioral) {
+      analysis.pillars.behavioral = {
+        score: unified.behavioral.overallScore ?? unified.behavioral.score ?? 0,
+        confidence: unified.behavioral.confidence || 'medium',
+        details: unified.behavioral.details || {}
       };
     }
 
-    // PILIERS 5-7 - ANALYSE SIMPLIFIÉE
-    analysis.pillars.behavioral = {
-      score: 75,
-      confidence: 'medium',
-      details: { analysis: 'Analyse comportementale basique' },
-      flags: []
-    };
+    // 3) Agrégats et classification (moyenne simple des piliers présents)
+    const present = Object.values(analysis.pillars).filter(p => typeof p?.score === 'number');
+    const sum = present.reduce((a, p) => a + (p.score || 0), 0);
+    analysis.overallScore = present.length ? Math.round(sum / present.length) : 0;
 
-    analysis.pillars.audio = {
-      score: 85,
-      confidence: 'low',
-      details: { analysis: 'Pas d\'audio détecté' },
-      flags: []
-    };
-
-    analysis.pillars.expert = {
-      score: 80,
-      confidence: 'medium',
-      details: { analysis: 'Évaluation experte automatique' },
-      flags: []
-    };
-
-    // CALCUL SCORE GLOBAL
-    const scores = Object.values(analysis.pillars).map(p => p.score);
-    analysis.overallScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
-
-    // CLASSIFICATION GLOBALE
     analysis.classification = analysis.overallScore >= 80 ? 'AUTHENTIC' :
-                             analysis.overallScore >= 60 ? 'LIKELY_AUTHENTIC' :
-                             analysis.overallScore >= 40 ? 'UNCERTAIN' :
-                             analysis.overallScore >= 20 ? 'LIKELY_FAKE' : 'FAKE';
+                              analysis.overallScore >= 60 ? 'LIKELY_AUTHENTIC' :
+                              analysis.overallScore >= 40 ? 'UNCERTAIN' :
+                              analysis.overallScore >= 20 ? 'LIKELY_FAKE' : 'FAKE';
 
-    // RECOMMANDATIONS
+    // Recommandations basées sur le score
     if (analysis.overallScore < 60) {
       analysis.recommendations.push('Analyse approfondie recommandée');
     }
-    if (analysis.flags.length > 3) {
-      analysis.recommendations.push('Vérification manuelle nécessaire');
-    }
 
-    console.log(`✅ Analyse forensique rapide terminée: ${analysis.overallScore}% (${analysis.classification})`);
+    console.log(`✅ Analyse forensique (réelle) terminée: ${analysis.overallScore}% (${analysis.classification})`);
     return analysis;
 
   } catch (error) {
-    console.error('❌ Erreur analyse forensique rapide locale:', error);
+    console.error('❌ Erreur analyse forensique (wrapper):', error);
     return {
       timestamp: new Date(),
       version: '3.0.0-error',
@@ -276,7 +221,7 @@ const performQuickForensicAnalysisLocal = async (filePath, imageData) => {
 const uploadForensicImage = async (req, res) => {
   const processingId = crypto.randomBytes(8).toString('hex');
   const startTimestamp = Date.now();
-  
+
   try {
     console.log(`📤 Upload forensique initié [${processingId}]`);
 
@@ -299,15 +244,21 @@ const uploadForensicImage = async (req, res) => {
 
     console.log(`✅ Empreintes calculées [${processingId}]: { sha256: '${hash.substring(0, 16)}...', fileSize: ${buffer.length} }`);
 
-    // Extraction métadonnées rapide
+    // Extraction EXIF préliminaire (centralisée)
     console.log(`📊 Extraction EXIF préliminaire [${processingId}]`);
     let exifData = {};
     try {
-      const rawExif = await ExifReader.parse(file.path);
-      exifData = normalizeExifData(rawExif);
-      console.log(`📊 EXIF normalisé: ${Object.keys(exifData).length} champs`);
+      const exif = await exifService.processImage(file?.path || file?.buffer);
+      const normalized = exif?.normalized?.data || {};
+      exifData = {
+        camera: normalized.camera || null,
+        technical: normalized.technical || null,
+        timestamps: normalized.timestamps || null,
+        gps: normalized.gps || null
+      };
+      console.log(`📊 EXIF normalisé (centralisé): ${Object.keys(normalized).length} sections`);
     } catch (exifError) {
-      console.warn(`⚠️ Erreur EXIF [${processingId}]:`, exifError.message);
+      console.warn(`⚠️ Erreur EXIF (centralisé) [${processingId}]:`, exifError.message);
     }
 
     // Génération nom unique sécurisé
@@ -340,14 +291,14 @@ const uploadForensicImage = async (req, res) => {
       size: file.size,
       hash: hash,
       md5: md5,
-      
+
       // Chemins fichiers
       files: {
         original: finalPath,
         processed: finalPath,
         thumbnail: null // Sera mis à jour après génération
       },
-      
+
       // Métadonnées
       metadata: {
         width: 0,
@@ -356,18 +307,18 @@ const uploadForensicImage = async (req, res) => {
         colorSpace: 'unknown',
         hasTransparency: false
       },
-      
-      // EXIF
-      exif: exifData,
-      
+
+      // EXIF centralisé (uniformisé)
+      exifData: exifData,
+
       // Statut initial
       status: 'uploaded',
       uploadedAt: new Date(),
       uploadedBy: req.user?.sub || 'anonymous',
-      
+
       // Session
       sessionId: req.headers['x-session-id'] || 'anonymous',
-      
+
       // Audit
       auditLog: [{
         action: 'IMAGE_UPLOADED',
@@ -381,14 +332,14 @@ const uploadForensicImage = async (req, res) => {
           userAgent: req.get('User-Agent')
         }
       }],
-      
+
       // Sécurité
       quarantine: {
         status: 'none',
         reason: null,
         quarantinedAt: null
       },
-      
+
       // Analyse (sera mise à jour)
       forensicAnalysis: {
         status: 'pending',
@@ -417,7 +368,7 @@ const uploadForensicImage = async (req, res) => {
           console.warn(`⚠️ Service thumbnail indisponible, utilisation fallback [${processingId}]`);
           await generateThumbnailFallback(finalPath, thumbnailPath);
         }
-        
+
         await Image.findByIdAndUpdate(savedImage._id, {
           'files.thumbnail': thumbnailPath
         });
@@ -431,7 +382,7 @@ const uploadForensicImage = async (req, res) => {
     setImmediate(async () => {
       try {
         const metadata = await sharp(finalPath).metadata();
-        
+
         // Mettre à jour métadonnées
         await Image.findByIdAndUpdate(savedImage._id, {
           'metadata.width': metadata.width,
@@ -444,17 +395,15 @@ const uploadForensicImage = async (req, res) => {
           'status': 'analyzing'
         });
 
-        // Analyse forensique rapide (avec fallback)
+        // Analyse forensique via service, fallback wrapper réel
         let analysis;
         try {
-          // Essayer le service forensicAnalyzer d'abord
           analysis = await performQuickForensicAnalysis(finalPath, metadata);
         } catch (serviceError) {
-          // Fallback vers analyse locale
-          console.warn(`⚠️ Service forensic indisponible, utilisation analyse locale [${processingId}]`);
+          console.warn(`⚠️ Service forensic indisponible, wrapper unifié [${processingId}]`, serviceError?.message);
           analysis = await performQuickForensicAnalysisLocal(finalPath, metadata);
         }
-        
+
         // Mettre à jour avec résultats d'analyse
         await Image.findByIdAndUpdate(savedImage._id, {
           'forensicAnalysis': {
@@ -468,7 +417,7 @@ const uploadForensicImage = async (req, res) => {
         });
 
         console.log(`✅ Analyse forensique terminée: ${savedImage._id} (${analysis.overallScore}%)`);
-        
+
         // AJOUTER ANALYSE LOURDE EN QUEUE (si disponible)
         try {
           await addAnalysisJob(savedImage._id, finalPath);
@@ -476,7 +425,7 @@ const uploadForensicImage = async (req, res) => {
         } catch (queueError) {
           console.warn(`⚠️ Queue indisponible [${processingId}]:`, queueError.message);
         }
-        
+
       } catch (analysisError) {
         console.error(`❌ Erreur analyse [${processingId}]:`, analysisError.message);
         await Image.findByIdAndUpdate(savedImage._id, {
@@ -487,8 +436,8 @@ const uploadForensicImage = async (req, res) => {
       }
     });
 
-    // RÉPONSE IMMÉDIATE (sans attendre l'analyse)
-    res.status(201).json({
+    // RÉPONSE IMMÉDIATE (retourne aussi le payload pour uploadMultiple)
+    const payload = {
       success: true,
       message: 'Image uploadée avec succès, analyse en cours',
       image: {
@@ -513,10 +462,10 @@ const uploadForensicImage = async (req, res) => {
         'Génération thumbnail en cours',
         'Utilisez statusUrl pour suivre le progrès'
       ]
-    });
-
-    // Log final
+    };
+    res.status(201).json(payload);
     console.log(`✅ Upload terminé: ${savedImage._id} [${processingId}] - ${Date.now() - startTimestamp}ms`);
+    return payload;
 
   } catch (error) {
     console.error(`❌ Erreur upload forensique [${processingId}]:`, error);
@@ -530,13 +479,15 @@ const uploadForensicImage = async (req, res) => {
       }
     }
 
-    res.status(500).json({
+    const errPayload = {
       error: 'Erreur lors de l\'upload forensique',
       type: 'UPLOAD_ERROR',
       details: process.env.NODE_ENV === 'development' ? error.message : 'Erreur interne',
       processingId: processingId,
       timestamp: new Date().toISOString()
-    });
+    };
+    res.status(500).json(errPayload);
+    return errPayload;
   }
 };
 
@@ -564,7 +515,7 @@ const uploadMultipleForensicImages = async (req, res) => {
           status: () => ({ json: (data) => data }),
           json: (data) => data
         };
-        
+
         const result = await uploadForensicImage(mockReq, mockRes);
         results.push(result);
       } catch (error) {
@@ -614,11 +565,11 @@ const getForensicImageDetails = async (req, res) => {
     }
 
     const objectId = validateObjectId(imageId);
-    
-    // Construction de la projection
+
+    // Construction de la projection (uniformisée exifData)
     let projection = '-__v';
     if (includeExif !== 'true') {
-      projection += ' -exif';
+      projection += ' -exifData';
     }
     if (includeAuditLog !== 'true' || !req.user?.roles?.includes('admin')) {
       projection += ' -auditLog';
@@ -714,7 +665,7 @@ const getImageStatus = async (req, res) => {
 
 const listForensicImages = async (req, res) => {
   const requestId = crypto.randomBytes(6).toString('hex');
-  
+
   try {
     const {
       page = 1,
@@ -745,7 +696,7 @@ const listForensicImages = async (req, res) => {
 
     // Construction du filtre
     const filter = {};
-    
+
     // Filtres utilisateur ou anonyme
     if (req.user) {
       filter.uploadedBy = req.user.sub;
@@ -762,7 +713,7 @@ const listForensicImages = async (req, res) => {
     if (maxScore) {
       filter.authenticityScore = { ...filter.authenticityScore, $lte: parseInt(maxScore) };
     }
-    
+
     if (dateFrom || dateTo) {
       filter.createdAt = {};
       if (dateFrom) filter.createdAt.$gte = new Date(dateFrom);
@@ -861,10 +812,10 @@ const deleteForensicImage = async (req, res) => {
   try {
     const { imageId } = req.params;
     const { reason, secure = 'false' } = req.query;
-    
+
     const objectId = validateObjectId(imageId);
     const image = await Image.findById(objectId);
-    
+
     if (!image) {
       return res.status(404).json({
         error: 'Image non trouvée',
@@ -896,9 +847,9 @@ const deleteForensicImage = async (req, res) => {
 
     // Suppression de la base de données
     await Image.findByIdAndDelete(objectId);
-    
+
     console.log(`✅ Image supprimée: ${imageId} par ${req.user?.sub} - Raison: ${reason || 'Non spécifiée'}`);
-    
+
     res.json({
       success: true,
       message: 'Image supprimée avec succès',
@@ -927,7 +878,7 @@ module.exports = {
   listForensicImages,
   deleteForensicImage,
   getImageStatus,
-  
+
   // Utilitaires
   validateObjectId,
   generateThumbnailFallback,

@@ -33,7 +33,7 @@ const config = {
   jwtRefreshSecret: process.env.JWT_REFRESH_SECRET || 'fallback-refresh-secret-change-in-production',
   logLevel: process.env.LOG_LEVEL || 'info',
   
-  // ✅ NOUVEAU - Configuration Python Bridge  
+  // ✅ NOUVEAU - Configuration Python Bridge 
   python: {
     executable: process.env.PYTHON_PATH || 'python',
     scriptsPath: path.join(__dirname, 'src'),
@@ -317,32 +317,52 @@ app.use((req, res, next) => {
 // ✅ NOUVEAU - PYTHON BRIDGE INTEGRATION
 // =====================================
 
-// Création du service PythonBridge
-const PythonBridge = require('./services/pythonBridge');
-
-// Initialisation du bridge avec gestion d'erreur
+// --- PythonBridge (tolérant et compatible export) ---
 let pythonBridge = null;
+
 try {
-  pythonBridge = new PythonBridge(config);
-  console.log('🔬 ForensicAnalyzer initialisé v3.0.0-service');
-  console.log('📸 ImageProcessor initialisé v3.0.0-service');
-  console.log('🐍 PythonBridge initialisé v3.0.0-service');
+  // Essayer src/services puis services pour couvrir les deux arborescences
+  let mod = null;
+  try {
+    mod = require('./src/services/pythonBridge');
+  } catch (e1) {
+    mod = require('./services/pythonBridge');
+  }
+
+  // Le module exporte { PythonBridge, bridge, ... } (CommonJS)
+  const { PythonBridge, bridge: pythonBridgeSingleton } = mod || {};
+
+  // Utiliser le singleton exporté si présent, sinon instancier la classe avec la config déjà définie
+  const pyCfg = config?.python || {};
+  pythonBridge = pythonBridgeSingleton || (PythonBridge ? new PythonBridge({ python: pyCfg }) : null);
+
+  if (pythonBridge) {
+    console.log('🔬 ForensicAnalyzer initialisé v3.0.0-service');
+    console.log('📸 ImageProcessor initialisé v3.0.0-service');
+    console.log('🐍 PythonBridge initialisé v3.0.0-service');
+  } else {
+    console.warn('🔕 PythonBridge indisponible (aucun export utilisable)');
+  }
 } catch (error) {
-  console.error('❌ Erreur initialisation Python Bridge:', error.message);
+  console.warn('🔕 PythonBridge désactivé (dev/local):', error.message);
+  pythonBridge = null;
 }
 
-// Test de connectivité Python au démarrage
+// Test de connectivité non bloquant (n’empêche pas le démarrage)
 if (pythonBridge) {
   (async () => {
     try {
-      console.log('🐍 Test connectivité Python...');
-      const testResult = await pythonBridge.executeScript('test_forensic_simple.py', 
-        { test: 'connectivity' }, { timeout: 10000 });
-      
-      if (testResult.success) {
-        console.log('✅ Python Bridge opérationnel');
+      if (typeof pythonBridge.testConnectivity === 'function') {
+        const test = await pythonBridge.testConnectivity();
+        if (test?.success) console.log('✅ Python Bridge opérationnel');
+        else console.warn('⚠️ Python Bridge partiellement disponible');
+      } else if (typeof pythonBridge.executeScript === 'function') {
+        console.log('🐍 Test connectivité Python...');
+        const testResult = await pythonBridge.executeScript('test_forensic_simple.py', { test: 'connectivity' }, { timeout: 10000 });
+        if (testResult?.success) console.log('✅ Python Bridge opérationnel');
+        else console.warn('⚠️ Python Bridge partiellement disponible');
       } else {
-        console.warn('⚠️ Python Bridge partiellement disponible');
+        console.warn('ℹ️ PythonBridge sans méthode de test disponible');
       }
     } catch (error) {
       console.warn('⚠️ Python Bridge non disponible:', error.message);
@@ -353,7 +373,7 @@ if (pythonBridge) {
 
 // Middleware pour injecter le bridge dans les requests
 app.use((req, res, next) => {
-  req.pythonBridge = pythonBridge;
+  req.pythonBridge = pythonBridge || null;
   next();
 });
 
@@ -387,7 +407,7 @@ app.get('/api/health', async (req, res) => {
       },
       python: {
         status: pythonBridge ? 'available' : 'unavailable',
-        bridge: pythonBridge ? pythonBridge.getStatus() : null,
+        bridge: pythonBridge ? pythonBridge.getStatus?.() : null,
         executable: config.python.executable,
         scriptsPath: config.python.scriptsPath
       },
@@ -457,7 +477,7 @@ app.get('/api/metrics', (req, res) => {
       collections: mongoose.connection.collections ?
         Object.keys(mongoose.connection.collections).length : 0
     } : null,
-    python: pythonBridge ? pythonBridge.getStatus() : { status: 'unavailable' } // ✅ NOUVEAU
+    python: pythonBridge ? (pythonBridge.getStatus?.() || { status: 'unknown' }) : { status: 'unavailable' } // ✅ NOUVEAU
   };
 
   res.json(metrics);
@@ -619,7 +639,7 @@ app.use((err, req, res, next) => {
   }
 
   if (err.code === 11000) {
-    const field = Object.keys(err.keyPattern || {})[0];
+    const field = Object.keys(err.keyPattern || {});
     return res.status(409).json({
       error: 'Ressource en conflit',
       details: field ? `${field} existe déjà` : 'Cette ressource existe déjà',
@@ -627,7 +647,7 @@ app.use((err, req, res, next) => {
     });
   }
 
-  if (err.message.includes('CORS')) {
+  if (err.message?.includes?.('CORS')) {
     return res.status(403).json({
       error: 'Origine non autorisée',
       details: 'Votre domaine n\'est pas autorisé à accéder à cette API',
@@ -678,7 +698,7 @@ app.use('*', (req, res) => {
       'POST /api/analysis/:imageId',
       'GET /api/reports/:imageId',
       'POST /api/forensic/analyze-image',    // ✅ NOUVEAU
-      'POST /api/forensic/validate',         // ✅ NOUVEAU  
+      'POST /api/forensic/validate',         // ✅ NOUVEAU 
       'POST /api/forensic/generate-report',  // ✅ NOUVEAU
       'GET /api/forensic/python-status'      // ✅ NOUVEAU
     ],
