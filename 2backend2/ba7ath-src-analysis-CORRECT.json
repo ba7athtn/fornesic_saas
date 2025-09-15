@@ -1,0 +1,440 @@
+{
+  "duplicatedServices": [
+    {
+      "type": "EXIF_ANALYSIS",
+      "file": "controllers/analysisController.js",
+      "suggestion": "Centraliser dans src/services/exifService.js"
+    },
+    {
+      "type": "FILE_UPLOAD",
+      "file": "controllers/analysisController.js",
+      "suggestion": "Unifier dans src/middleware/uploadMiddleware.js"
+    },
+    {
+      "type": "AUTH_MIDDLEWARE",
+      "file": "controllers/analysisController.js",
+      "suggestion": "Centraliser dans src/middleware/authMiddleware.js"
+    },
+    {
+      "type": "AUTH_MIDDLEWARE",
+      "file": "controllers/authController.js",
+      "suggestion": "Centraliser dans src/middleware/authMiddleware.js"
+    },
+    {
+      "type": "EXIF_ANALYSIS",
+      "file": "controllers/imageController.js",
+      "suggestion": "Centraliser dans src/services/exifService.js"
+    },
+    {
+      "type": "FILE_UPLOAD",
+      "file": "controllers/imageController.js",
+      "suggestion": "Unifier dans src/middleware/uploadMiddleware.js"
+    },
+    {
+      "type": "AUTH_MIDDLEWARE",
+      "file": "controllers/imageController.js",
+      "suggestion": "Centraliser dans src/middleware/authMiddleware.js"
+    },
+    {
+      "type": "EXIF_ANALYSIS",
+      "file": "controllers/reportController.js",
+      "suggestion": "Centraliser dans src/services/exifService.js"
+    },
+    {
+      "type": "AUTH_MIDDLEWARE",
+      "file": "controllers/reportController.js",
+      "suggestion": "Centraliser dans src/middleware/authMiddleware.js"
+    },
+    {
+      "type": "JWT_AUTHENTICATION",
+      "file": "middleware/auth.js",
+      "lines": [
+        1,
+        103
+      ],
+      "suggestion": "Centraliser dans src/services/authService.js"
+    },
+    {
+      "type": "AUTH_MIDDLEWARE",
+      "file": "middleware/auth.js",
+      "suggestion": "Centraliser dans src/middleware/authMiddleware.js"
+    },
+    {
+      "type": "EXIF_ANALYSIS",
+      "file": "middleware/upload.js",
+      "suggestion": "Centraliser dans src/services/exifService.js"
+    },
+    {
+      "type": "FILE_UPLOAD",
+      "file": "middleware/upload.js",
+      "suggestion": "Unifier dans src/middleware/uploadMiddleware.js"
+    },
+    {
+      "type": "EXIF_ANALYSIS",
+      "file": "middleware/validation.js",
+      "suggestion": "Centraliser dans src/services/exifService.js"
+    },
+    {
+      "type": "FILE_UPLOAD",
+      "file": "middleware/validation.js",
+      "suggestion": "Unifier dans src/middleware/uploadMiddleware.js"
+    },
+    {
+      "type": "EXIF_ANALYSIS",
+      "file": "models/Analysis.js",
+      "suggestion": "Centraliser dans src/services/exifService.js"
+    },
+    {
+      "type": "EXIF_ANALYSIS",
+      "file": "models/Image.js",
+      "suggestion": "Centraliser dans src/services/exifService.js"
+    },
+    {
+      "type": "EXIF_ANALYSIS",
+      "file": "models/Report.js",
+      "suggestion": "Centraliser dans src/services/exifService.js"
+    },
+    {
+      "type": "EXIF_ANALYSIS",
+      "file": "routes/analysis.js",
+      "suggestion": "Centraliser dans src/services/exifService.js"
+    },
+    {
+      "type": "AUTH_MIDDLEWARE",
+      "file": "routes/analysis.js",
+      "suggestion": "Centraliser dans src/middleware/authMiddleware.js"
+    },
+    {
+      "type": "AUTH_MIDDLEWARE",
+      "file": "routes/auth.js",
+      "suggestion": "Centraliser dans src/middleware/authMiddleware.js"
+    },
+    {
+      "type": "EXIF_ANALYSIS",
+      "file": "routes/images.js",
+      "suggestion": "Centraliser dans src/services/exifService.js"
+    },
+    {
+      "type": "FILE_UPLOAD",
+      "file": "routes/images.js",
+      "suggestion": "Unifier dans src/middleware/uploadMiddleware.js"
+    },
+    {
+      "type": "AUTH_MIDDLEWARE",
+      "file": "routes/images.js",
+      "suggestion": "Centraliser dans src/middleware/authMiddleware.js"
+    },
+    {
+      "type": "EXIF_ANALYSIS",
+      "file": "routes/reports.js",
+      "suggestion": "Centraliser dans src/services/exifService.js"
+    },
+    {
+      "type": "AUTH_MIDDLEWARE",
+      "file": "routes/reports.js",
+      "suggestion": "Centraliser dans src/middleware/authMiddleware.js"
+    },
+    {
+      "type": "EXIF_ANALYSIS",
+      "file": "services/aiDetectionService.js",
+      "suggestion": "Centraliser dans src/services/exifService.js"
+    },
+    {
+      "type": "EXIF_ANALYSIS",
+      "file": "services/analysisQueue.js",
+      "suggestion": "Centraliser dans src/services/exifService.js"
+    },
+    {
+      "type": "JWT_AUTHENTICATION",
+      "file": "services/authService.js",
+      "lines": [
+        1,
+        34,
+        38,
+        92,
+        126
+      ],
+      "suggestion": "Centraliser dans src/services/authService.js"
+    },
+    {
+      "type": "EXIF_ANALYSIS",
+      "file": "services/cacheService.js",
+      "suggestion": "Centraliser dans src/services/exifService.js"
+    },
+    {
+      "type": "EXIF_ANALYSIS",
+      "file": "services/forensicAnalyzer.js",
+      "suggestion": "Centraliser dans src/services/exifService.js"
+    },
+    {
+      "type": "EXIF_ANALYSIS",
+      "file": "services/geoLocationService.js",
+      "suggestion": "Centraliser dans src/services/exifService.js"
+    },
+    {
+      "type": "EXIF_ANALYSIS",
+      "file": "services/heavyAnalyzer.js",
+      "suggestion": "Centraliser dans src/services/exifService.js"
+    },
+    {
+      "type": "EXIF_ANALYSIS",
+      "file": "services/imageProcessor.js",
+      "suggestion": "Centraliser dans src/services/exifService.js"
+    },
+    {
+      "type": "EXIF_ANALYSIS",
+      "file": "services/manipulationDetector.js",
+      "suggestion": "Centraliser dans src/services/exifService.js"
+    },
+    {
+      "type": "EXIF_ANALYSIS",
+      "file": "utils/exifNormalizer.js",
+      "suggestion": "Centraliser dans src/services/exifService.js"
+    },
+    {
+      "type": "EXIF_ANALYSIS",
+      "file": "utils/forensicAnalyzer.js",
+      "suggestion": "Centraliser dans src/services/exifService.js"
+    },
+    {
+      "type": "EXIF_ANALYSIS",
+      "file": "utils/imageProcessor.js",
+      "suggestion": "Centraliser dans src/services/exifService.js"
+    },
+    {
+      "type": "EXIF_ANALYSIS",
+      "file": "utils/pdfGenerator.js",
+      "suggestion": "Centraliser dans src/services/exifService.js"
+    }
+  ],
+  "recurringPatterns": [
+    {
+      "type": "VALIDATION_LOGIC",
+      "file": "controllers/analysisController.js",
+      "occurrences": 6,
+      "suggestion": "Centraliser dans src/services/validators.js"
+    },
+    {
+      "type": "FORENSIC_ANALYSIS",
+      "file": "controllers/analysisController.js",
+      "suggestion": "Harmoniser dans src/services/forensicService.js"
+    },
+    {
+      "type": "VALIDATION_LOGIC",
+      "file": "controllers/authController.js",
+      "occurrences": 16,
+      "suggestion": "Centraliser dans src/services/validators.js"
+    },
+    {
+      "type": "VALIDATION_LOGIC",
+      "file": "controllers/imageController.js",
+      "occurrences": 8,
+      "suggestion": "Centraliser dans src/services/validators.js"
+    },
+    {
+      "type": "VALIDATION_LOGIC",
+      "file": "controllers/reportController.js",
+      "occurrences": 7,
+      "suggestion": "Centraliser dans src/services/validators.js"
+    },
+    {
+      "type": "VALIDATION_LOGIC",
+      "file": "middleware/auth.js",
+      "occurrences": 11,
+      "suggestion": "Centraliser dans src/services/validators.js"
+    },
+    {
+      "type": "VALIDATION_LOGIC",
+      "file": "middleware/upload.js",
+      "occurrences": 51,
+      "suggestion": "Centraliser dans src/services/validators.js"
+    },
+    {
+      "type": "VALIDATION_LOGIC",
+      "file": "middleware/validation.js",
+      "occurrences": 87,
+      "suggestion": "Centraliser dans src/services/validators.js"
+    },
+    {
+      "type": "VALIDATION_LOGIC",
+      "file": "models/Analysis.js",
+      "occurrences": 1,
+      "suggestion": "Centraliser dans src/services/validators.js"
+    },
+    {
+      "type": "VALIDATION_LOGIC",
+      "file": "models/Image.js",
+      "occurrences": 26,
+      "suggestion": "Centraliser dans src/services/validators.js"
+    },
+    {
+      "type": "VALIDATION_LOGIC",
+      "file": "models/Report.js",
+      "occurrences": 38,
+      "suggestion": "Centraliser dans src/services/validators.js"
+    },
+    {
+      "type": "VALIDATION_LOGIC",
+      "file": "routes/analysis.js",
+      "occurrences": 15,
+      "suggestion": "Centraliser dans src/services/validators.js"
+    },
+    {
+      "type": "VALIDATION_LOGIC",
+      "file": "routes/auth.js",
+      "occurrences": 12,
+      "suggestion": "Centraliser dans src/services/validators.js"
+    },
+    {
+      "type": "VALIDATION_LOGIC",
+      "file": "routes/forensic.js",
+      "occurrences": 12,
+      "suggestion": "Centraliser dans src/services/validators.js"
+    },
+    {
+      "type": "VALIDATION_LOGIC",
+      "file": "routes/images.js",
+      "occurrences": 17,
+      "suggestion": "Centraliser dans src/services/validators.js"
+    },
+    {
+      "type": "VALIDATION_LOGIC",
+      "file": "routes/reports.js",
+      "occurrences": 14,
+      "suggestion": "Centraliser dans src/services/validators.js"
+    },
+    {
+      "type": "FORENSIC_ANALYSIS",
+      "file": "services/aiDetectionService.js",
+      "suggestion": "Harmoniser dans src/services/forensicService.js"
+    },
+    {
+      "type": "FORENSIC_ANALYSIS",
+      "file": "services/forensicAnalyzer.js",
+      "suggestion": "Harmoniser dans src/services/forensicService.js"
+    },
+    {
+      "type": "FORENSIC_ANALYSIS",
+      "file": "services/heavyAnalyzer.js",
+      "suggestion": "Harmoniser dans src/services/forensicService.js"
+    },
+    {
+      "type": "VALIDATION_LOGIC",
+      "file": "services/imageProcessor.js",
+      "occurrences": 1,
+      "suggestion": "Centraliser dans src/services/validators.js"
+    },
+    {
+      "type": "FORENSIC_ANALYSIS",
+      "file": "services/manipulationDetector.js",
+      "suggestion": "Harmoniser dans src/services/forensicService.js"
+    },
+    {
+      "type": "FORENSIC_ANALYSIS",
+      "file": "services/pythonBridge.js",
+      "suggestion": "Harmoniser dans src/services/forensicService.js"
+    },
+    {
+      "type": "VALIDATION_LOGIC",
+      "file": "utils/exifNormalizer.js",
+      "occurrences": 24,
+      "suggestion": "Centraliser dans src/services/validators.js"
+    },
+    {
+      "type": "VALIDATION_LOGIC",
+      "file": "utils/imageProcessor.js",
+      "occurrences": 15,
+      "suggestion": "Centraliser dans src/services/validators.js"
+    },
+    {
+      "type": "VALIDATION_LOGIC",
+      "file": "utils/pdfGenerator.js",
+      "occurrences": 12,
+      "suggestion": "Centraliser dans src/services/validators.js"
+    }
+  ],
+  "refactoringRecommendations": [
+    {
+      "priority": "CRITICAL",
+      "type": "UNIFY_EXIF_ANALYSIS",
+      "description": "EXIF analysis scattered in 23 files",
+      "action": "Centraliser dans src/services/exifService.js",
+      "estimatedSavings": "575 lignes de code",
+      "files": [
+        "controllers/analysisController.js",
+        "controllers/imageController.js",
+        "controllers/reportController.js",
+        "middleware/upload.js",
+        "middleware/validation.js",
+        "models/Analysis.js",
+        "models/Image.js",
+        "models/Report.js",
+        "routes/analysis.js",
+        "routes/images.js",
+        "routes/reports.js",
+        "services/aiDetectionService.js",
+        "services/analysisQueue.js",
+        "services/cacheService.js",
+        "services/forensicAnalyzer.js",
+        "services/geoLocationService.js",
+        "services/heavyAnalyzer.js",
+        "services/imageProcessor.js",
+        "services/manipulationDetector.js",
+        "utils/exifNormalizer.js",
+        "utils/forensicAnalyzer.js",
+        "utils/imageProcessor.js",
+        "utils/pdfGenerator.js"
+      ]
+    },
+    {
+      "priority": "CRITICAL",
+      "type": "HARMONIZE_FORENSIC_ALGORITHMS",
+      "description": "Forensic analysis algorithms in 6 files",
+      "action": "Harmoniser dans src/services/forensicService.js",
+      "estimatedSavings": "210 lignes de code",
+      "files": [
+        "controllers/analysisController.js",
+        "services/aiDetectionService.js",
+        "services/forensicAnalyzer.js",
+        "services/heavyAnalyzer.js",
+        "services/manipulationDetector.js",
+        "services/pythonBridge.js"
+      ]
+    },
+    {
+      "priority": "HIGH",
+      "type": "HARMONIZE_UPLOAD_LOGIC",
+      "description": "File upload logic in 5 files",
+      "action": "Unifier dans src/middleware/uploadMiddleware.js",
+      "estimatedSavings": "100 lignes de code",
+      "files": [
+        "controllers/analysisController.js",
+        "controllers/imageController.js",
+        "middleware/upload.js",
+        "middleware/validation.js",
+        "routes/images.js"
+      ]
+    },
+    {
+      "priority": "HIGH",
+      "type": "CENTRALIZE_JWT_SERVICE",
+      "description": "JWT logic found in 2 files",
+      "action": "Centraliser dans src/services/authService.js",
+      "estimatedSavings": "30 lignes de code",
+      "files": [
+        "middleware/auth.js",
+        "services/authService.js"
+      ]
+    }
+  ],
+  "codeMetrics": {
+    "analyzedPath": "./src",
+    "totalFiles": 34,
+    "jwtDuplicationsCount": 2,
+    "exifDuplicationsCount": 23,
+    "uploadDuplicationsCount": 5,
+    "authMiddlewareDuplicationsCount": 9,
+    "forensicDuplicationsCount": 6,
+    "totalEstimatedSavings": "915 lignes de code"
+  }
+}

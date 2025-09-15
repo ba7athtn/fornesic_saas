@@ -1,27 +1,127 @@
-version: '3.8'
+version: "3.8"
 
+# =========================================
+# Réseau dédié (optionnel mais recommandé)
+# =========================================
+networks:
+  ba7ath_net:
+    driver: bridge
+
+# =========================================
+# Volumes persistants
+# =========================================
+volumes:
+  uploads_data: {}     # Persiste /app/uploads (temp, processed, thumbnails, reports)
+  mongodb_data: {}     # Persiste /data/db Mongo
+
+# =========================================
+# Services
+# =========================================
 services:
+
+  # ---------------------------
+  # Backend API
+  # ---------------------------
   backend:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # Optionnel: build args si besoin
+      # args:
+      #   - NODE_ENV=production
+    image: ba7ath/backend:latest
+    container_name: ba7ath-backend
+    restart: unless-stopped
+    # En production, préférez NODE_ENV=production
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      # URLs app/front
+      APP_URL: http://localhost:5000
+      FRONTEND_URL: http://localhost:3000
+      # DB / Cache
+      MONGODB_URI: mongodb://mongodb:27017/image-forensic
+      # JWT (exemples; remplacez par vos secrets)
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_EMAIL_SECRET: ${JWT_EMAIL_SECRET}
+      # Uploads/limits
+      MAX_FILE_SIZE: 500mb
+      MULTER_FILE_SIZE: 524288000
+      MAX_FILES_PER_REQUEST: 10
+      # Forensic toggles
+      AI_DETECTION_ENABLED: "true"
+      HEAVY_ANALYSIS_ENABLED: "true"
+      FORENSIC_VALIDATION_REQUIRED: "false"
+      # Rate limit
+      RATE_LIMIT_WINDOW: 15
+      RATE_LIMIT_MAX_REQUESTS: 100
+      # Redis (si utilisé plus tard)
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
     ports:
       - "5000:5000"
-    environment:
-      - NODE_ENV=development
-      - PORT=5000
-      - MONGODB_URI=mongodb://mongodb:27017/image-forensic
+    # En dev local: montez le code si hot-reload (npm run dev)
+    # En prod: évitez le bind mount du code; laissez l'image contenir le build
     volumes:
-      - .:/app
-      - /app/node_modules
-      - ./uploads:/app/uploads
+      # Décommentez en dev pour live reload:
+      # - .:/app
+      # - /app/node_modules
+      # Volume nommé pour persister les uploads
+      - uploads_data:/app/uploads
+      # Facultatif: logs persistants
+      # - ./logs:/app/logs
     depends_on:
-      - mongodb
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5000/api/health/live || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 25s
+      retries: 5
+    networks:
+      - ba7ath_net
 
+  # ---------------------------
+  # MongoDB
+  # ---------------------------
   mongodb:
     image: mongo:7
+    container_name: ba7ath-mongodb
+    restart: unless-stopped
     ports:
       - "27017:27017"
     volumes:
       - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval 'db.runCommand({ ping: 1 }).ok' || exit 1"]
+      interval: 20s
+      timeout: 5s
+      start_period: 15s
+      retries: 5
+    networks:
+      - ba7ath_net
 
-volumes:
-  mongodb_data:
+  # ---------------------------
+  # Redis (optionnel)
+  # ---------------------------
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: ba7ath-redis
+  #   restart: unless-stopped
+  #   ports:
+  #     - "6379:6379"
+  #   command: ["redis-server", "--appendonly", "yes"]
+  #   volumes:
+  #     - redis_data:/data
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 20s
+  #     timeout: 5s
+  #     retries: 5
+  #   networks:
+  #     - ba7ath_net
+
+# volumes:
+#   redis_data: {}
