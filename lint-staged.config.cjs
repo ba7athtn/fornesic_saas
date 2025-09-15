@@ -1,1 +1,1 @@
-module.exports={ '**/*.js':['prettier --write'] };
+module.exports={ 'src/**/*.js':['prettier --write'], 'tests/**/*.js':['prettier --write'] };
